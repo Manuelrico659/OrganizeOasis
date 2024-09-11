@@ -182,7 +182,6 @@ def edit_todo(todo_id):
     return redirect(url_for("home"))
 
 
-
 @app.route("/delete_todo/<todo_id>", methods=["POST"])
 def delete_todo(todo_id):
     todos_collection.delete_one({'id': todo_id})
