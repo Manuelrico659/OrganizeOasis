@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Profile</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/edit_profile.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <h1>Edit Profile</h1>
+        </nav>
+    </header>
+    <main>
+        <form method="POST">
+            <div class="profile-info">
+                <div>
+                    <label for="username">Username:</label>
+                    <input type="text" id="username" name="username" value="{{ user.username }}" readonly>
+                    <button type="button" onclick="editField('username')">Edit</button>
+                </div>
+                
+                <div>
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" value="{{ user.email }}" readonly>
+                    <button type="button" onclick="editField('email')">Edit</button>
+                </div>
+                
+                <div>
+                    <label for="firstname">First Name:</label>
+                    <input type="text" id="firstname" name="firstname" value="{{ user.firstname }}" readonly>
+                    <button type="button" onclick="editField('firstname')">Edit</button>
+                </div>
+                
+                <div>
+                    <label for="lastname">Last Name:</label>
+                    <input type="text" id="lastname" name="lastname" value="{{ user.lastname }}" readonly>
+                    <button type="button" onclick="editField('lastname')">Edit</button>
+                </div>
+                
+                <div>
+                    <label for="current_password">Current Password:</label>
+                    <input type="password" id="current_password" name="current_password" required>
+                </div>
+                
+                <div>
+                    <label for="new_password">New Password:</label>
+                    <input type="password" id="new_password" name="new_password">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit">Update Profile</button>
+                    <a href="{{ url_for('home') }}" class="back-button">Back</a>
+                </div>
+            </div>
+        </form>
+    </main>
+    
+    <script>
+        function editField(fieldId) {
+            document.getElementById(fieldId).removeAttribute('readonly');
+            document.getElementById(fieldId).focus();
+        }
+    </script>
+</body>
+</html>

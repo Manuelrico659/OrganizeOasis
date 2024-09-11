@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OrganizeOasis</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <h1>OrganizeOasis</h1>
+            <div class="hamburger-menu" onclick="toggleMenu()">☰</div>
+            <div class="user-menu" id="userMenu">
+                <p>Hi, {{ session['username'] }}!</p>
+                <p>Email: {{ session['email'] }}</p>
+                <a href="/edit_profile" class="edit-profile-button">Edit Profile</a>
+                <a href="/logout" class="logout-button">Logout</a>
+            </div>
+        </nav>
+    </header>
+    <main>
+        <form action="{{ url_for('home') }}" class="input_container" method="POST">
+            <input type="text" placeholder="Add task" id="input_todo" name="todo_name">
+            <input type="date" id="todo_date" name="todo_date">
+            <select id="priority" name="priority">
+                <option value="1">Priority 1</option>
+                <option value="2">Priority 2</option>
+                <option value="3">Priority 3</option>
+            </select>
+            <button id="add_todo">+</button>
+        </form>
+        <h2>List</h2>
+        <div class="todo_container">
+            {% for item in items %}
+            <div class="todo">
+                <span class="task-priority {{ item.priority_class }}"></span>
+                <form action="{{ url_for('checked_todo', todo_id=item.id) }}" method="POST">
+                    <span class="checkmark-container">
+                        <input type="checkbox" id="check-{{ item.id }}" {% if item.checked %}checked{% endif %} onchange="this.form.submit()">
+                        <label for="check-{{ item.id }}" class="checkmark"></label>
+                    </span>
+                </form>
+                <p id="paragraph-{{ item.id }}" class="editable" contenteditable="false" onblur="updateTodoName('{{ item.id }}')">{{ item.name }}</p>
+                <input type="date" id="date-{{ item.id }}" class="todo-date" value="{{ item.date }}" disabled onchange="updateTodoDate('{{ item.id }}')">
+                <div class="actions">
+                    <span id="edit-button-{{ item.id }}" class="edit-button" onclick="toggleEdit('{{ item.id }}')">Edit</span>
+                    <form action="{{ url_for('delete_todo', todo_id=item.id) }}" method="POST">
+                        <button class="delete-button">Delete</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </main>
+    <script>
+        function toggleEdit(todoId) {
+            var p = document.getElementById('paragraph-' + todoId);
+            var dateInput = document.getElementById('date-' + todoId);
+            var button = document.getElementById('edit-button-' + todoId);
+            var isEditable = p.getAttribute('contenteditable') === 'true';
+
+            if (isEditable) {
+                p.setAttribute('contenteditable', 'false');
+                p.style.border = 'none';
+                dateInput.disabled = true;
+                button.textContent = 'Edit';
+                updateTodoName(todoId);
+                updateTodoDate(todoId);
+            } else {
+                p.setAttribute('contenteditable', 'true');
+                p.style.border = '1px solid #ddd';
+                dateInput.disabled = false;
+                p.focus();
+                button.textContent = 'Save';
+            }
+        }
+
+        function updateTodoName(todoId) {
+            var p = document.getElementById('paragraph-' + todoId);
+            var newName = p.innerText.trim();
+
+            if (newName !== '') {
+                var xhr = new XMLHttpRequest();
+                xhr.open("POST", "/edit_todo/" + todoId, true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        console.log('Update successful');
+                    } else {
+                        console.log('Update failed: ' + xhr.status);
+                    }
+                };
+                xhr.send("new_text=" + encodeURIComponent(newName));
+            }
+        }
+
+        function updateTodoDate(todoId) {
+            var dateInput = document.getElementById('date-' + todoId);
+            var newDate = dateInput.value;
+
+            if (newDate) {
+                var xhr = new XMLHttpRequest();
+                xhr.open("POST", "/edit_todo/" + todoId, true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        console.log('Date update successful');
+                    } else {
+                        console.log('Date update failed: ' + xhr.status);
+                    }
+                };
+                xhr.send("new_date=" + encodeURIComponent(newDate));
+            }
+        }
+
+
+        function toggleMenu() {
+            var menu = document.getElementById('userMenu');
+            menu.classList.toggle('show');
+        }
+    </script>
+</body>
+</html>
