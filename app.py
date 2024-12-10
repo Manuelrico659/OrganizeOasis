@@ -20,7 +20,6 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY")
 if not app.secret_key:
     raise ValueError("La clave secreta no está definida. Establezca FLASK_SECRET_KEY en las variables de entorno.")
 
-app.permanent_session_lifetime = timedelta(minutes=30)
 
 # Configuración de OAuth (Google)
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
