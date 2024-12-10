@@ -81,6 +81,15 @@ def register():
         email = request.form['email']
         username = request.form['username']
         password = request.form['password']
+        
+
+        # Prueba con un hash simple
+        password = "testpassword"
+        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+
+        # Verificación con el mismo hash
+        print(bcrypt.check_password_hash(hashed_password, password))  # Debería devolver True
+
 
         # Cifrar el correo
         encrypted_email = cipher_suite.encrypt(email.encode()).decode('utf-8')
@@ -121,16 +130,16 @@ def login():
 
         if user:
             # Verificar la contraseña
-            if bcrypt.check_password_hash(user[5], password_candidate):  # user[4] is the password column
+            if bcrypt.check_password_hash(user[4], password_candidate):  # user[4] is the password column
                 session['loggedin'] = True
                 session['username'] = username
                 
                 # Descifrar el correo
-                decrypted_email = cipher_suite.decrypt(user[2].encode()).decode('utf-8')  # user[1] is the email column
+                decrypted_email = cipher_suite.decrypt(user[1].encode()).decode('utf-8')  # user[1] is the email column
                 session['email'] = decrypted_email
                 
                 flash('Inicio de sesión exitoso.')
-                return redirect(url_for("home"))
+                return redirect(url_for('home'))
             else:
                 flash('Contraseña incorrecta.')
         else:
