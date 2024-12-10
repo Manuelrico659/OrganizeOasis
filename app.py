@@ -295,11 +295,11 @@ def login_callback():
             cursor.execute(""" 
                 INSERT INTO users (username, email, firstname, lastname, password) 
                 VALUES (%s, %s, %s, %s, %s)
-            """, (user_info['email'], user_info['email'], user_info['given_name'], user_info['family_name'], hashed_password))
+            """, (user_info['username'], user_info['encryted_email'], user_info['firstname'], user_info['lastname'], hashed_password))
             connection.commit()
 
         cursor.close()
-
+        connection.close()
         session['loggedin'] = True
         session['username'] = user_info['email']
         session['email'] = user_info['email']
