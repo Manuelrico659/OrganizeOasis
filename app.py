@@ -40,7 +40,8 @@ google = oauth.register(
 # Configuración de MongoDB Atlas (para la lista de tareas)
 client = MongoClient(os.getenv('MONGO_URI'))
 db = client['todo_database']
-todos_collection = db['todos']
+todos_collection = db['Oasis']
+
 
 # Cargar o generar la clave para cifrado
 key_path = "secret.key"
