@@ -5,9 +5,8 @@ import cryptography
 import uuid
 import os
 from dotenv import load_dotenv
-from flask_mysqldb import MySQL
 from flask_bcrypt import Bcrypt
-import MySQLdb.cursors
+import psycopg2
 from datetime import timedelta
 from authlib.integrations.flask_client import OAuth
 
@@ -38,8 +37,8 @@ google = oauth.register(
     authorize_url='https://accounts.google.com/o/oauth2/auth'
 )
 
-# Configuración de MongoDB (para la lista de tareas)
-client = MongoClient(os.getenv('MONGODB_URI'))
+# Configuración de MongoDB Atlas (para la lista de tareas)
+client = MongoClient(os.getenv('MONGO_URI'))
 db = client['todo_database']
 todos_collection = db['todos']
 
@@ -54,17 +53,26 @@ else:
         key_file.write(key)
 cipher_suite = Fernet(key)
 
-# Configuración de MySQL (para registro y login)
-app.config['MYSQL_HOST'] = os.getenv('MYSQL_HOST')
-app.config['MYSQL_USER'] = os.getenv('MYSQL_USER')
-app.config['MYSQL_PASSWORD'] = os.getenv('MYSQL_PASSWORD')
-app.config['MYSQL_DB'] = os.getenv('MYSQL_DB')
+# Configuración de PostgreSQL (para registro y login)
+app.config['POSTGRES_HOST'] = os.getenv('POSTGRES_HOST')
+app.config['POSTGRES_USER'] = os.getenv('POSTGRES_USER')
+app.config['POSTGRES_PASSWORD'] = os.getenv('POSTGRES_PASSWORD')
+app.config['POSTGRES_DB'] = os.getenv('POSTGRES_DB')
 
-# Inicializando MySQL y Bcrypt
-mysql = MySQL(app)
+# Inicializando PostgreSQL y Bcrypt
 bcrypt = Bcrypt(app)
 
-# ------------- RUTAS PARA REGISTRO Y LOGIN (SQL) -----------------
+# Conexión a PostgreSQL
+def get_db_connection():
+    conn = psycopg2.connect(
+        host=os.getenv('POSTGRES_HOST'),
+        user=os.getenv('POSTGRES_USER'),
+        password=os.getenv('POSTGRES_PASSWORD'),
+        dbname=os.getenv('POSTGRES_DB')
+    )
+    return conn
+
+# ------------- RUTAS PARA REGISTRO Y LOGIN (PostgreSQL) -----------------
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -80,14 +88,16 @@ def register():
         # Cifrar la contraseña
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
-        # Guardar usuario en la base de datos SQL
-        cursor = mysql.connection.cursor()
+        # Guardar usuario en la base de datos PostgreSQL
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO users (username, email, firstname, lastname, password) 
             VALUES (%s, %s, %s, %s, %s)
         """, (username, encrypted_email, firstname, lastname, hashed_password))
-        mysql.connection.commit()
+        conn.commit()
         cursor.close()
+        conn.close()
 
         flash('Usuario registrado exitosamente.')
         return redirect(url_for('login'))
@@ -101,20 +111,22 @@ def login():
         username = request.form['username']
         password_candidate = request.form['password']
 
-        # Verificar si el usuario existe en la base de datos SQL
-        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        # Verificar si el usuario existe en la base de datos PostgreSQL
+        conn = get_db_connection()
+        cursor = conn.cursor()
         cursor.execute("SELECT * FROM users WHERE username = %s", [username])
         user = cursor.fetchone()
         cursor.close()
+        conn.close()
 
         if user:
             # Verificar la contraseña
-            if bcrypt.check_password_hash(user['password'], password_candidate):
+            if bcrypt.check_password_hash(user[4], password_candidate):  # user[4] is the password column
                 session['loggedin'] = True
                 session['username'] = username
                 
                 # Descifrar el correo
-                decrypted_email = cipher_suite.decrypt(user['email'].encode()).decode('utf-8')
+                decrypted_email = cipher_suite.decrypt(user[1].encode()).decode('utf-8')  # user[1] is the email column
                 session['email'] = decrypted_email
                 
                 flash('Inicio de sesión exitoso.')
@@ -134,7 +146,7 @@ def logout():
     flash('Has cerrado sesión.')
     return redirect(url_for('login'))
 
-# ------------- RUTAS PARA LA LISTA DE TAREAS (MongoDB) -----------------
+# ------------- RUTAS PARA LA LISTA DE TAREAS (MongoDB Atlas) -----------------
 @app.route("/", methods=["GET", "POST"])
 @app.route("/home", methods=["GET", "POST"])
 def home():
@@ -222,7 +234,8 @@ def edit_profile():
         new_lastname = request.form['lastname']
         new_password = request.form['password']
 
-        cursor = mysql.connection.cursor()
+        conn = get_db_connection()
+        cursor = conn.cursor()
         if new_password:
             hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
             cursor.execute("""
@@ -236,8 +249,9 @@ def edit_profile():
                 SET firstname = %s, lastname = %s
                 WHERE username = %s
             """, (new_firstname, new_lastname, session.get('username')))
-        mysql.connection.commit()
+        conn.commit()
         cursor.close()
+        conn.close()
 
         flash('Perfil actualizado exitosamente.')
 
