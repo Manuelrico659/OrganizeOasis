@@ -37,11 +37,16 @@ google = oauth.register(
     authorize_url='https://accounts.google.com/o/oauth2/auth'
 )
 
-# Configuración de MongoDB Atlas (para la lista de tareas)
-client = MongoClient(os.getenv('MONGO_URI'))
-db = client['todo_database']
-todos_collection = db['Oasis']
+# Inicializar bcrypt
+bcrypt = Bcrypt(app)
 
+# Configuración de MongoDB
+try:
+    client = MongoClient(os.getenv('MONGO_URI', 'mongodb://localhost:27017/'))
+    db = client['Users_Tasks']
+    todos_collection = db['Tasks']
+except Exception as e:
+    app.logger.error("Error al conectar a MongoDB: %s", str(e))
 
 # Cargar o generar la clave para cifrado
 key_path = "secret.key"
@@ -122,12 +127,12 @@ def login():
 
         if user:
             # Verificar la contraseña
-            if bcrypt.check_password_hash(user[5], password_candidate):  # user[4] is the password column
+            if bcrypt.check_password_hash(user[4], password_candidate):  # user[4] is the password column
                 session['loggedin'] = True
                 session['username'] = username
                 
                 # Descifrar el correo
-                decrypted_email = cipher_suite.decrypt(user[2].encode()).decode('utf-8')  # user[1] is the email column
+                decrypted_email = cipher_suite.decrypt(user[1].encode()).decode('utf-8')  # user[1] is the email column
                 session['email'] = decrypted_email
                 
                 flash('Inicio de sesión exitoso.')
