@@ -4,13 +4,36 @@ from cryptography.fernet import Fernet
 import cryptography
 import uuid
 import os
+from dotenv import load_dotenv
 from flask_mysqldb import MySQL
 from flask_bcrypt import Bcrypt
 import MySQLdb.cursors
+from datetime import timedelta
+from authlib.integrations.flask_client import OAuth
 
-app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+# Cargar variables de entorno
+load_dotenv(dotenv_path='variables.env')
 
+app = Flask(__name__, template_folder='templates')
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "default_secret_key")  # Cargar clave secreta desde las variables de entorno
+if app.secret_key == "default_secret_key":
+    app.logger.warning("Usando clave secreta predeterminada. Esto no es seguro para producción.")
+app.permanent_session_lifetime = timedelta(minutes=30)
+
+# Configuración de OAuth
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+GOOGLE_DISCOVERY_URL = os.getenv('GOOGLE_DISCOVERY_URL')
+GOOGLE_SCOPES = os.getenv('GOOGLE_SCOPES', 'openid profile email')
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url=GOOGLE_DISCOVERY_URL,
+    client_kwargs={'scope': GOOGLE_SCOPES},
+    authorize_url='https://accounts.google.com/o/oauth2/auth'
+)
 # MongoDB connection (para la lista de tareas)
 client = MongoClient('mongodb://localhost:27017/')
 db = client['todo_database']
@@ -115,6 +138,7 @@ def logout():
     session.pop('email', None)
     flash('Has cerrado sesión.')
     return redirect(url_for('login'))
+
 
 # ------------- RUTAS PARA LA LISTA DE TAREAS (MongoDB) -----------------
 @app.route("/", methods=["GET", "POST"])
@@ -229,6 +253,72 @@ def edit_profile():
         flash('Perfil actualizado exitosamente.')
 
     return render_template('edit_profile.html')
+
+
+@app.route('/authorize/google', endpoint='google_authorize')
+def google_authorize():
+    token = google.authorize_access_token()
+    user_info = google.get('userinfo').json()
+    # Process user_info or log the user in
+    return redirect(url_for('home'))
+
+@app.route('/login/google')
+def login_google():
+    state = str(uuid.uuid4())
+    session['oauth_state'] = state
+    redirect_uri = url_for('login_callback', _external=True)
+    return google.authorize_redirect(redirect_uri, state=state)
+
+@app.route('/google/callback')
+def login_callback():
+    try:
+        if request.args.get('state') != session.get('oauth_state'):
+            raise Exception("State mismatch error!")
+
+        token = google.authorize_access_token()
+
+        session['google_token'] = token
+
+        user_info_response = google.get('https://www.googleapis.com/oauth2/v1/userinfo')
+        if user_info_response.status_code != 200:
+            raise Exception("Error al obtener información del usuario desde Google.")
+        user_info = user_info_response.json()
+
+        # Cifrar el correo del usuario
+        encrypted_email = cipher_suite.encrypt(user_info['email'].encode()).decode('utf-8')
+        print(f"Encrypted email before storing: {encrypted_email}")
+
+        # Generar una contraseña aleatoria (si es necesario, puedes modificar esto)
+        hashed_password = bcrypt.generate_password_hash(str(uuid.uuid4())).decode('utf-8')
+
+        # Guardar usuario en la base de datos SQL
+        cursor = mysql.connection.cursor()
+        cursor.execute("SELECT * FROM users WHERE email = %s", [encrypted_email])
+        user = cursor.fetchone()
+
+        if not user:
+            cursor.execute(""" 
+                INSERT INTO users (username, email, firstname, lastname, password) 
+                VALUES (%s, %s, %s, %s, %s)
+            """, (user_info['email'], encrypted_email, user_info['given_name'], user_info['family_name'], hashed_password))
+            mysql.connection.commit()
+
+        cursor.close()
+
+        session['loggedin'] = True
+        session['username'] = user_info['email']
+        session['email'] = user_info['email']
+        session['name'] = user_info['name']
+        session['picture'] = user_info.get('picture', '')
+
+        flash('Inicio de sesión con Google exitoso.')
+        return redirect(url_for('index'))  # Redirigir al index después del login exitoso
+
+    except Exception as e:
+        app.logger.error(f"Error durante la autenticación con Google: {e}")
+        flash(f"Error durante la autenticación con Google: {e}")
+        return redirect(url_for('login'))
+
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -32,6 +32,14 @@
                 </div>
                 <button type="submit">Iniciar Sesión</button>
             </form>
+            
+            <!-- Opciones de inicio de sesión con OAuth 2.0 -->
+            <div class="oauth_buttons">
+                <button onclick="window.location.href='/login/google'" class="oauth google">
+                    Inicia sesión con Google
+                </button>
+            </div>
+
             <p>¿No tienes cuenta? <a href="{{ url_for('register') }}">Regístrate aquí</a></p>
         </div>
     </main>

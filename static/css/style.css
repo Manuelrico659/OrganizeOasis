@@ -252,3 +252,20 @@ input[type="checkbox"] {
     text-align: center; /* Centrar el texto dentro del campo de fecha */
     position: relative; /* Necesario para posicionar el ícono de calendario si se usa */
 }
+
+.google-btn {
+    background-color: #4285F4;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 10px;
+    text-align: center;
+    border-radius: 5px;
+}
+
+.google-btn:hover {
+    background-color: #357ae8;
+}

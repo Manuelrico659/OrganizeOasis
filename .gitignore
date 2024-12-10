@@ -45,3 +45,5 @@ dist/
 *.bak
 *.swp
 *~
+venvTODOLIST/pyvenv.cfg
+venvTODOLIST/variables.env
