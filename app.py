@@ -82,6 +82,15 @@ def register():
         username = request.form['username']
         password = request.form['password']
         
+
+        # Prueba con un hash simple
+        password = "testpassword"
+        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+
+        # Verificación con el mismo hash
+        print(bcrypt.check_password_hash(hashed_password, password))  # Debería devolver True
+
+
         # Cifrar el correo
         encrypted_email = cipher_suite.encrypt(email.encode()).decode('utf-8')
 
