@@ -260,5 +260,58 @@ def edit_profile():
 
     return render_template('edit_profile.html')
 
+
+@app.route('/login/google')
+def login_google():
+    state = str(uuid.uuid4())
+    session['oauth_state'] = state
+    redirect_uri = url_for('login_callback', _external=True)
+    return google.authorize_redirect(redirect_uri, state=state)
+
+
+@app.route('/google/callback')
+def login_callback():
+    try:
+        if request.args.get('state') != session.get('oauth_state'):
+            raise Exception("State mismatch error!")
+
+        token = google.authorize_access_token()
+
+        session['google_token'] = token
+
+        user_info_response = google.get('https://www.googleapis.com/oauth2/v1/userinfo')
+        if user_info_response.status_code != 200:
+            raise Exception("Error al obtener información del usuario desde Google.")
+        user_info = user_info_response.json()
+
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        cursor.execute("SELECT * FROM users WHERE email = %s", [user_info['email']])
+        user = cursor.fetchone()
+
+        if not user:
+            hashed_password = bcrypt.generate_password_hash(str(uuid.uuid4())).decode('utf-8')
+            cursor.execute(""" 
+                INSERT INTO users (username, email, firstname, lastname, password) 
+                VALUES (%s, %s, %s, %s, %s)
+            """, (user_info['email'], user_info['email'], user_info['given_name'], user_info['family_name'], hashed_password))
+            connection.commit()
+
+        cursor.close()
+
+        session['loggedin'] = True
+        session['username'] = user_info['email']
+        session['email'] = user_info['email']
+        session['name'] = user_info['name']
+        session['picture'] = user_info.get('picture', '')
+
+        flash('Inicio de sesión con Google exitoso.')
+        return redirect(url_for('home'))  # Redirige a la home después del inicio de sesión
+
+    except Exception as e:
+        app.logger.error(f"Error durante la autenticación con Google: {e}")
+        flash(f"Error durante la autenticación con Google: {e}")
+        return redirect(url_for('login'))
+
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=5000)
