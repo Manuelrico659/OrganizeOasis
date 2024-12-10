@@ -12,15 +12,18 @@ from datetime import timedelta
 from authlib.integrations.flask_client import OAuth
 
 # Cargar variables de entorno
-load_dotenv(dotenv_path='variables.env')
+load_dotenv()
 
 app = Flask(__name__, template_folder='templates')
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "default_secret_key")  # Cargar clave secreta desde las variables de entorno
-if app.secret_key == "default_secret_key":
-    app.logger.warning("Usando clave secreta predeterminada. Esto no es seguro para producción.")
+
+# Configuración de la clave secreta (cargar desde variables de entorno)
+app.secret_key = os.getenv("FLASK_SECRET_KEY")
+if not app.secret_key:
+    raise ValueError("La clave secreta no está definida. Establezca FLASK_SECRET_KEY en las variables de entorno.")
+
 app.permanent_session_lifetime = timedelta(minutes=30)
 
-# Configuración de OAuth
+# Configuración de OAuth (Google)
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 GOOGLE_DISCOVERY_URL = os.getenv('GOOGLE_DISCOVERY_URL')
@@ -34,12 +37,13 @@ google = oauth.register(
     client_kwargs={'scope': GOOGLE_SCOPES},
     authorize_url='https://accounts.google.com/o/oauth2/auth'
 )
-# MongoDB connection (para la lista de tareas)
-client = MongoClient('mongodb://localhost:27017/')
+
+# Configuración de MongoDB (para la lista de tareas)
+client = MongoClient(os.getenv('MONGODB_URI'))
 db = client['todo_database']
 todos_collection = db['todos']
 
-# Load or generate a key for encryption and decryption (para cifrar tareas y datos de usuarios)
+# Cargar o generar la clave para cifrado
 key_path = "secret.key"
 if os.path.exists(key_path):
     with open(key_path, "rb") as key_file:
@@ -51,10 +55,10 @@ else:
 cipher_suite = Fernet(key)
 
 # Configuración de MySQL (para registro y login)
-app.config['MYSQL_HOST'] = 'localhost'
-app.config['MYSQL_USER'] = 'root'
-app.config['MYSQL_PASSWORD'] = ''
-app.config['MYSQL_DB'] = 'LOGIN_TODOLIST'
+app.config['MYSQL_HOST'] = os.getenv('MYSQL_HOST')
+app.config['MYSQL_USER'] = os.getenv('MYSQL_USER')
+app.config['MYSQL_PASSWORD'] = os.getenv('MYSQL_PASSWORD')
+app.config['MYSQL_DB'] = os.getenv('MYSQL_DB')
 
 # Inicializando MySQL y Bcrypt
 mysql = MySQL(app)
@@ -69,11 +73,10 @@ def register():
         email = request.form['email']
         username = request.form['username']
         password = request.form['password']
-        print(f"Encryption key: {key}")
+        
         # Cifrar el correo
         encrypted_email = cipher_suite.encrypt(email.encode()).decode('utf-8')
-        print(f"Encrypted email before storing: {encrypted_email}")
-        
+
         # Cifrar la contraseña
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
@@ -109,18 +112,10 @@ def login():
             if bcrypt.check_password_hash(user['password'], password_candidate):
                 session['loggedin'] = True
                 session['username'] = username
-                print(f"Decryption key: {key}")
-                # Verificar el correo cifrado antes de descifrar
-                print(f"Encrypted email from DB: {user['email']}")
                 
-                try:
-                    # Descifrar el correo
-                    decrypted_email = cipher_suite.decrypt(user['email'].encode()).decode('utf-8')
-                    session['email'] = decrypted_email
-                except cryptography.fernet.InvalidToken:
-                    print("Error: InvalidToken al descifrar el correo.")
-                    flash('Error al descifrar el correo.')
-                    return redirect(url_for('login'))
+                # Descifrar el correo
+                decrypted_email = cipher_suite.decrypt(user['email'].encode()).decode('utf-8')
+                session['email'] = decrypted_email
                 
                 flash('Inicio de sesión exitoso.')
                 return redirect(url_for('home'))
@@ -139,7 +134,6 @@ def logout():
     flash('Has cerrado sesión.')
     return redirect(url_for('login'))
 
-
 # ------------- RUTAS PARA LA LISTA DE TAREAS (MongoDB) -----------------
 @app.route("/", methods=["GET", "POST"])
 @app.route("/home", methods=["GET", "POST"])
@@ -147,12 +141,12 @@ def home():
     if 'loggedin' not in session:
         return redirect(url_for('login'))
     
-    user_id = session.get('username')  # Usar el nombre de usuario o un identificador único
+    user_id = session.get('username')
 
     if request.method == "POST":
         todo_name = request.form.get("todo_name", "").strip()
         priority = request.form.get("priority")
-        todo_date = request.form.get("todo_date")  # Obtener la fecha
+        todo_date = request.form.get("todo_date")
 
         if todo_name:
             encrypted_name = cipher_suite.encrypt(todo_name.encode()).decode()
@@ -161,8 +155,8 @@ def home():
                 'id': str(uuid.uuid4()),
                 'name': encrypted_name,
                 'checked': False,
-                'priority': priority,  # Guardar la prioridad de la tarea
-                'date': todo_date  # Guardar la fecha de la tarea
+                'priority': priority,
+                'date': todo_date
             })
     
     todos = todos_collection.find({'user_id': user_id})
@@ -171,9 +165,9 @@ def home():
             'id': todo['id'],
             'name': cipher_suite.decrypt(todo['name'].encode()).decode(),
             'checked': todo['checked'],
-            'priority': todo['priority'],  # Pasar la prioridad
-            'date': todo['date'],  # Pasar la fecha
-            'priority_class': f"priority-{todo['priority']}"  # Asignar clase de prioridad
+            'priority': todo['priority'],
+            'date': todo['date'],
+            'priority_class': f"priority-{todo['priority']}"
         } for todo in todos
     ]
 
@@ -194,17 +188,12 @@ def edit_todo(todo_id):
         updates['date'] = new_date
     
     if updates:
-        result = todos_collection.update_one(
+        todos_collection.update_one(
             {'id': todo_id},
             {'$set': updates}
         )
-        if result.modified_count == 0:
-            print("No document was updated. Check the todo_id.")
-    else:
-        print("No new content or date provided.")
     
     return redirect(url_for("home"))
-
 
 @app.route("/delete_todo/<todo_id>", methods=["POST"])
 def delete_todo(todo_id):
@@ -254,71 +243,5 @@ def edit_profile():
 
     return render_template('edit_profile.html')
 
-
-@app.route('/authorize/google', endpoint='google_authorize')
-def google_authorize():
-    token = google.authorize_access_token()
-    user_info = google.get('userinfo').json()
-    # Process user_info or log the user in
-    return redirect(url_for('home'))
-
-@app.route('/login/google')
-def login_google():
-    state = str(uuid.uuid4())
-    session['oauth_state'] = state
-    redirect_uri = url_for('login_callback', _external=True)
-    return google.authorize_redirect(redirect_uri, state=state)
-
-@app.route('/google/callback')
-def login_callback():
-    try:
-        if request.args.get('state') != session.get('oauth_state'):
-            raise Exception("State mismatch error!")
-
-        token = google.authorize_access_token()
-
-        session['google_token'] = token
-
-        user_info_response = google.get('https://www.googleapis.com/oauth2/v1/userinfo')
-        if user_info_response.status_code != 200:
-            raise Exception("Error al obtener información del usuario desde Google.")
-        user_info = user_info_response.json()
-
-        # Cifrar el correo del usuario
-        encrypted_email = cipher_suite.encrypt(user_info['email'].encode()).decode('utf-8')
-        print(f"Encrypted email before storing: {encrypted_email}")
-
-        # Generar una contraseña aleatoria (si es necesario, puedes modificar esto)
-        hashed_password = bcrypt.generate_password_hash(str(uuid.uuid4())).decode('utf-8')
-
-        # Guardar usuario en la base de datos SQL
-        cursor = mysql.connection.cursor()
-        cursor.execute("SELECT * FROM users WHERE email = %s", [encrypted_email])
-        user = cursor.fetchone()
-
-        if not user:
-            cursor.execute(""" 
-                INSERT INTO users (username, email, firstname, lastname, password) 
-                VALUES (%s, %s, %s, %s, %s)
-            """, (user_info['email'], encrypted_email, user_info['given_name'], user_info['family_name'], hashed_password))
-            mysql.connection.commit()
-
-        cursor.close()
-
-        session['loggedin'] = True
-        session['username'] = user_info['email']
-        session['email'] = user_info['email']
-        session['name'] = user_info['name']
-        session['picture'] = user_info.get('picture', '')
-
-        flash('Inicio de sesión con Google exitoso.')
-        return redirect(url_for('index'))  # Redirigir al index después del login exitoso
-
-    except Exception as e:
-        app.logger.error(f"Error durante la autenticación con Google: {e}")
-        flash(f"Error durante la autenticación con Google: {e}")
-        return redirect(url_for('login'))
-
-
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False, host='0.0.0.0', port=int(os.getenv("PORT", 5000)))
