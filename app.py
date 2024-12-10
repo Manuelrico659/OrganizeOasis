@@ -20,6 +20,7 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY")
 if not app.secret_key:
     raise ValueError("La clave secreta no está definida. Establezca FLASK_SECRET_KEY en las variables de entorno.")
 
+app.permanent_session_lifetime = timedelta(minutes=30)
 
 # Configuración de OAuth (Google)
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
@@ -81,15 +82,6 @@ def register():
         username = request.form['username']
         password = request.form['password']
         
-
-        # Prueba con un hash simple
-        password = "testpassword"
-        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-
-        # Verificación con el mismo hash
-        print(bcrypt.check_password_hash(hashed_password, password))  # Debería devolver True
-
-
         # Cifrar el correo
         encrypted_email = cipher_suite.encrypt(email.encode()).decode('utf-8')
 
@@ -266,4 +258,4 @@ def edit_profile():
     return render_template('edit_profile.html')
 
 if __name__ == "__main__":
-    app.run(debug=False, host='0.0.0.0', port=int(os.getenv("PORT", 5000)))
+    app.run(debug=True, host='0.0.0.0', port=5000)
