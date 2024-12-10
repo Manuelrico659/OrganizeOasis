@@ -1,41 +1,55 @@
-from flask import Flask, render_template, url_for, request, redirect, flash, session
+import logging
+import os
+import uuid
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 from pymongo import MongoClient
 from cryptography.fernet import Fernet
-import cryptography
-import uuid
-import os
-from dotenv import load_dotenv
 from flask_bcrypt import Bcrypt
-import psycopg2
-from datetime import timedelta
+from dotenv import load_dotenv
 from authlib.integrations.flask_client import OAuth
+from datetime import timedelta
+import psycopg2
+
+# Configurar logger
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Cargar variables de entorno
 load_dotenv(dotenv_path='variables.env')
 
+# Inicializar la app Flask
 app = Flask(__name__, template_folder='templates')
-
-# Configuración de la clave secreta (cargar desde variables de entorno)
-app.secret_key = os.getenv("FLASK_SECRET_KEY")
-if not app.secret_key:
-    raise ValueError("La clave secreta no está definida. Establezca FLASK_SECRET_KEY en las variables de entorno.")
-
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "default_secret_key")  # Cargar clave secreta desde las variables de entorno
+if app.secret_key == "default_secret_key":
+    app.logger.warning("Usando clave secreta predeterminada. Esto no es seguro para producción.")
 app.permanent_session_lifetime = timedelta(minutes=30)
 
-# Configuración de OAuth (Google)
-GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
-GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-GOOGLE_DISCOVERY_URL = os.getenv('GOOGLE_DISCOVERY_URL')
-GOOGLE_SCOPES = os.getenv('GOOGLE_SCOPES', 'openid profile email')
-oauth = OAuth(app)
-google = oauth.register(
-    name='google',
-    client_id=GOOGLE_CLIENT_ID,
-    client_secret=GOOGLE_CLIENT_SECRET,
-    server_metadata_url=GOOGLE_DISCOVERY_URL,
-    client_kwargs={'scope': GOOGLE_SCOPES},
-    authorize_url='https://accounts.google.com/o/oauth2/auth'
-)
+# Configuración de PostgreSQL
+app.config['POSTGRES_HOST'] = os.getenv('POSTGRES_HOST')
+app.config['POSTGRES_USER'] = os.getenv('POSTGRES_USER')
+app.config['POSTGRES_PASSWORD'] = os.getenv('POSTGRES_PASSWORD')
+app.config['POSTGRES_DB'] = os.getenv('POSTGRES_DB')
+app.config['POSTGRES_PORT'] = int(os.getenv('POSTGRES_PORT', 5432))
+
+# Conexión a PostgreSQL
+def get_postgres_connection():
+    try:
+        conn = psycopg2.connect(
+            host=app.config['POSTGRES_HOST'],
+            user=app.config['POSTGRES_USER'],
+            password=app.config['POSTGRES_PASSWORD'],
+            dbname=app.config['POSTGRES_DB'],
+            port=app.config['POSTGRES_PORT']
+        )
+        return conn
+    except Exception as e:
+        app.logger.error("Error al conectar a PostgreSQL: %s", str(e))
+        return None
+
+def get_postgres_cursor():
+    conn = get_postgres_connection()
+    if conn:
+        return conn.cursor(), conn  # Devolver también la conexión para usar 'with'
+    return None, None
 
 # Inicializar bcrypt
 bcrypt = Bcrypt(app)
@@ -48,7 +62,7 @@ try:
 except Exception as e:
     app.logger.error("Error al conectar a MongoDB: %s", str(e))
 
-# Cargar o generar la clave para cifrado
+# Cargar clave para cifrado
 key_path = "secret.key"
 if os.path.exists(key_path):
     with open(key_path, "rb") as key_file:
@@ -59,26 +73,27 @@ else:
         key_file.write(key)
 cipher_suite = Fernet(key)
 
-# Configuración de PostgreSQL (para registro y login)
-app.config['POSTGRES_HOST'] = os.getenv('POSTGRES_HOST')
-app.config['POSTGRES_USER'] = os.getenv('POSTGRES_USER')
-app.config['POSTGRES_PASSWORD'] = os.getenv('POSTGRES_PASSWORD')
-app.config['POSTGRES_DB'] = os.getenv('POSTGRES_DB')
+# Configuración de OAuth
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+GOOGLE_DISCOVERY_URL = os.getenv('GOOGLE_DISCOVERY_URL')
+GOOGLE_SCOPES = os.getenv('GOOGLE_SCOPES', 'openid profile email')
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url=GOOGLE_DISCOVERY_URL,
+    client_kwargs={'scope': GOOGLE_SCOPES}
+)
 
-# Inicializando PostgreSQL y Bcrypt
-bcrypt = Bcrypt(app)
+# Funciones auxiliares
+def validate_todo_data(todo_name):
+    if not todo_name or not todo_name.strip():
+        return None
+    return todo_name.strip()
 
-# Conexión a PostgreSQL
-def get_db_connection():
-    conn = psycopg2.connect(
-        host=os.getenv('POSTGRES_HOST'),
-        user=os.getenv('POSTGRES_USER'),
-        password=os.getenv('POSTGRES_PASSWORD'),
-        dbname=os.getenv('POSTGRES_DB')
-    )
-    return conn
-
-# ------------- RUTAS PARA REGISTRO Y LOGIN (PostgreSQL) -----------------
+# Rutas
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -87,181 +102,160 @@ def register():
         email = request.form['email']
         username = request.form['username']
         password = request.form['password']
-        
-        # Cifrar el correo
-        encrypted_email = cipher_suite.encrypt(email.encode()).decode('utf-8')
 
-        # Cifrar la contraseña
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
-        # Guardar usuario en la base de datos PostgreSQL
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO users (username, email, firstname, lastname, password) 
-            VALUES (%s, %s, %s, %s, %s)
-        """, (username, encrypted_email, firstname, lastname, hashed_password))
-        conn.commit()
-        cursor.close()
-        conn.close()
+        try:
+            cursor, conn = get_postgres_cursor()
+            if cursor:
+                cursor.execute("""INSERT INTO users (username, email, firstname, lastname, password)
+                                  VALUES (%s, %s, %s, %s, %s)""",
+                               (username, email, firstname, lastname, hashed_password))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                flash('Usuario registrado exitosamente.')
+                return redirect(url_for('login'))  # Redirige al login después de registrarse
+        except Exception as e:
+            app.logger.error("Error al registrar usuario: %s", str(e))
+            flash('Error al registrar usuario. Por favor, inténtelo nuevamente.')
 
-        flash('Usuario registrado exitosamente.')
-        return redirect(url_for('login'))
-    
     return render_template('register.html')
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if 'loggedin' in session:
+        return redirect(url_for('home'))  # Redirige a la home si ya está logueado
+
     if request.method == 'POST':
         username = request.form['username']
         password_candidate = request.form['password']
 
-        # Verificar si el usuario existe en la base de datos PostgreSQL
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE username = %s", [username])
-        user = cursor.fetchone()
-        cursor.close()
-        conn.close()
+        try:
+            cursor, conn = get_postgres_cursor()
+            if cursor:
+                cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+                user = cursor.fetchone()
+                cursor.close()
 
-        if user:
-            # Verificar la contraseña
-            if bcrypt.check_password_hash(user[4], password_candidate):  # user[4] is the password column
-                session['loggedin'] = True
-                session['username'] = username
-                
-                # Descifrar el correo
-                decrypted_email = cipher_suite.decrypt(user[1].encode()).decode('utf-8')  # user[1] is the email column
-                session['email'] = decrypted_email
-                
-                flash('Inicio de sesión exitoso.')
-                return redirect(url_for('home'))
-            else:
-                flash('Contraseña incorrecta.')
-        else:
-            flash('Usuario no encontrado.')
+                if user and bcrypt.check_password_hash(user[4], password_candidate):
+                    session['loggedin'] = True
+                    session['username'] = user[1]
+                    session['email'] = user[2]
+                    flash('Inicio de sesión exitoso.')
+                    return redirect(url_for('home'))  # Redirige a la home después de iniciar sesión
+                else:
+                    flash('Credenciales incorrectas.')
+
+        except Exception as e:
+            app.logger.error("Error al iniciar sesión: %s", str(e))
+            flash('Error al iniciar sesión. Por favor, inténtelo nuevamente.')
 
     return render_template('login.html')
 
+@app.route('/login/google')
+def login_google():
+    state = str(uuid.uuid4())
+    session['oauth_state'] = state
+    redirect_uri = url_for('login_callback', _external=True)
+    return google.authorize_redirect(redirect_uri, state=state)
+
+@app.route('/google/callback')
+def login_callback():
+    try:
+        if request.args.get('state') != session.get('oauth_state'):
+            raise Exception("State mismatch error!")
+
+        token = google.authorize_access_token()
+
+        session['google_token'] = token
+
+        user_info_response = google.get('https://www.googleapis.com/oauth2/v1/userinfo')
+        if user_info_response.status_code != 200:
+            raise Exception("Error al obtener información del usuario desde Google.")
+        user_info = user_info_response.json()
+
+        connection = get_postgres_connection()
+        cursor = connection.cursor()
+        cursor.execute("SELECT * FROM users WHERE email = %s", [user_info['email']])
+        user = cursor.fetchone()
+
+        if not user:
+            hashed_password = bcrypt.generate_password_hash(str(uuid.uuid4())).decode('utf-8')
+            cursor.execute(""" 
+                INSERT INTO users (username, email, firstname, lastname, password) 
+                VALUES (%s, %s, %s, %s, %s)
+            """, (user_info['email'], user_info['email'], user_info['given_name'], user_info['family_name'], hashed_password))
+            connection.commit()
+
+        cursor.close()
+
+        session['loggedin'] = True
+        session['username'] = user_info['email']
+        session['email'] = user_info['email']
+        session['name'] = user_info['name']
+        session['picture'] = user_info.get('picture', '')
+
+        flash('Inicio de sesión con Google exitoso.')
+        return redirect(url_for('home'))  # Redirige a la home después del inicio de sesión
+
+    except Exception as e:
+        app.logger.error(f"Error durante la autenticación con Google: {e}")
+        flash(f"Error durante la autenticación con Google: {e}")
+        return redirect(url_for('login'))
+
 @app.route('/logout')
 def logout():
-    session.pop('loggedin', None)
-    session.pop('username', None)
-    session.pop('email', None)
+    session.clear()
     flash('Has cerrado sesión.')
-    return redirect(url_for('login'))
+    return redirect(url_for('login'))  # Redirige al login después de cerrar sesión
 
-# ------------- RUTAS PARA LA LISTA DE TAREAS (MongoDB Atlas) -----------------
 @app.route("/", methods=["GET", "POST"])
 @app.route("/home", methods=["GET", "POST"])
 def home():
     if 'loggedin' not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for('login'))  # Redirige al login si no está logueado
     
     user_id = session.get('username')
 
     if request.method == "POST":
         todo_name = request.form.get("todo_name", "").strip()
-        priority = request.form.get("priority")
-        todo_date = request.form.get("todo_date")
-
+        priority = request.form.get("priority", "3")
         if todo_name:
-            encrypted_name = cipher_suite.encrypt(todo_name.encode()).decode()
-            todos_collection.insert_one({
-                'user_id': user_id,
-                'id': str(uuid.uuid4()),
-                'name': encrypted_name,
-                'checked': False,
-                'priority': priority,
-                'date': todo_date
-            })
+            try:
+                encrypted_name = cipher_suite.encrypt(todo_name.encode()).decode()
+                todos_collection.insert_one({
+                    'user_id': user_id,
+                    'id': str(uuid.uuid4()),
+                    'name': encrypted_name,
+                    'checked': False,
+                    'priority': priority
+                })
+                flash("Tarea añadida exitosamente.")
+            except Exception as e:
+                app.logger.error("Error al guardar tarea en MongoDB: %s", str(e))
+                flash("Error al guardar la tarea.")
     
-    todos = todos_collection.find({'user_id': user_id})
-    items = [
-        {
-            'id': todo['id'],
-            'name': cipher_suite.decrypt(todo['name'].encode()).decode(),
-            'checked': todo['checked'],
-            'priority': todo['priority'],
-            'date': todo['date'],
-            'priority_class': f"priority-{todo['priority']}"
-        } for todo in todos
-    ]
+    try:
+        todos = todos_collection.find({'user_id': user_id})
+        decrypted_todos = []
+        for todo in todos:
+            try:
+                decrypted_name = cipher_suite.decrypt(todo['name'].encode()).decode()
+                decrypted_todos.append({
+                    'id': todo['id'],
+                    'name': decrypted_name,
+                    'checked': todo['checked'],
+                    'priority': todo['priority']
+                })
+            except Exception as e:
+                app.logger.error("Error al desencriptar tarea: %s", str(e))
 
-    return render_template("index.html", items=items)
+    except Exception as e:
+        app.logger.error("Error al obtener tareas de MongoDB: %s", str(e))
+        decrypted_todos = []
 
-@app.route("/edit_todo/<todo_id>", methods=["POST"])
-def edit_todo(todo_id):
-    new_content = request.form.get('new_text', "").strip()
-    new_date = request.form.get('new_date', "").strip()
-    
-    updates = {}
-    
-    if new_content:
-        encrypted_name = cipher_suite.encrypt(new_content.encode()).decode()
-        updates['name'] = encrypted_name
-    
-    if new_date:
-        updates['date'] = new_date
-    
-    if updates:
-        todos_collection.update_one(
-            {'id': todo_id},
-            {'$set': updates}
-        )
-    
-    return redirect(url_for("home"))
-
-@app.route("/delete_todo/<todo_id>", methods=["POST"])
-def delete_todo(todo_id):
-    todos_collection.delete_one({'id': todo_id})
-    return redirect(url_for("home"))
-
-@app.route("/checked_todo/<todo_id>", methods=["POST"])
-def checked_todo(todo_id):
-    todo = todos_collection.find_one({'id': todo_id})
-    if todo:
-        new_checked_status = not todo['checked']
-        todos_collection.update_one(
-            {'id': todo_id},
-            {'$set': {'checked': new_checked_status}}
-        )
-    return redirect(url_for("home"))
-
-# Página de edición de perfil
-@app.route('/edit_profile', methods=['GET', 'POST'])
-def edit_profile():
-    if 'loggedin' not in session:
-        return redirect(url_for('login'))
-
-    if request.method == 'POST':
-        new_firstname = request.form['firstname']
-        new_lastname = request.form['lastname']
-        new_password = request.form['password']
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if new_password:
-            hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
-            cursor.execute("""
-                UPDATE users
-                SET firstname = %s, lastname = %s, password = %s
-                WHERE username = %s
-            """, (new_firstname, new_lastname, hashed_password, session.get('username')))
-        else:
-            cursor.execute("""
-                UPDATE users
-                SET firstname = %s, lastname = %s
-                WHERE username = %s
-            """, (new_firstname, new_lastname, session.get('username')))
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        flash('Perfil actualizado exitosamente.')
-
-    return render_template('edit_profile.html')
+    return render_template("index.html", todos=decrypted_todos)
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=5000)
