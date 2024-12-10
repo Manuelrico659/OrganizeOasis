@@ -261,6 +261,7 @@ def edit_profile():
     return render_template('edit_profile.html')
 
 
+
 @app.route('/login/google')
 def login_google():
     state = str(uuid.uuid4())
