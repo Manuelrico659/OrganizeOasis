@@ -139,7 +139,7 @@ def login():
                 session['email'] = decrypted_email
                 
                 flash('Inicio de sesión exitoso.')
-                return redirect(url_for('home'))
+                return redirect(url_for('index.html'))
             else:
                 flash('Contraseña incorrecta.')
         else:
