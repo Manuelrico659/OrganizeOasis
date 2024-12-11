@@ -10,6 +10,13 @@ import psycopg2
 from datetime import timedelta
 from authlib.integrations.flask_client import OAuth
 
+class Todo:
+    def __init__(self, name):
+        self.name = cipher_suite.encrypt(name.encode()).decode()
+    
+    def decrypt_name(self):
+        return cipher_suite.decrypt(self.name.encode()).decode()
+
 # Cargar variables de entorno
 load_dotenv(dotenv_path='variables.env')
 
