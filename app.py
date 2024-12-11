@@ -280,30 +280,42 @@ def login_callback():
 
         session['google_token'] = token
 
+        # Obtener la información del usuario desde Google
         user_info_response = google.get('https://www.googleapis.com/oauth2/v1/userinfo')
         if user_info_response.status_code != 200:
             raise Exception("Error al obtener información del usuario desde Google.")
         user_info = user_info_response.json()
 
+        # Aquí se debe verificar si el usuario ya existe en la base de datos
         connection = get_db_connection()
         cursor = connection.cursor()
+
+        # Buscar al usuario por su correo electrónico (Google lo proporciona)
         cursor.execute("SELECT * FROM users WHERE email = %s", [user_info['email']])
         user = cursor.fetchone()
 
+        # Si el usuario no existe, se registra en la base de datos
         if not user:
-            hashed_password = bcrypt.generate_password_hash(str(uuid.uuid4())).decode('utf-8')
-            cursor.execute(""" 
-                INSERT INTO users (username, email, firstname, lastname, password) 
+            # Usamos un valor por defecto para el username, ya que Google no lo proporciona
+            username = user_info['email'].split('@')[0]  # Puedes personalizar esto
+
+            # Insertar el nuevo usuario en la base de datos
+            hashed_password = bcrypt.generate_password_hash(str(uuid.uuid4())).decode('utf-8')  # Usamos un hash vacío para el password
+            cursor.execute("""
+                INSERT INTO users (username, email, firstname, lastname, password)
                 VALUES (%s, %s, %s, %s, %s)
-            """, (user_info['username'], user_info['encryted_email'], user_info['firstname'], user_info['lastname'], hashed_password))
+            """, (username, user_info['email'], user_info.get('given_name', ''), user_info.get('family_name', ''), hashed_password))
             connection.commit()
 
+        # Cerrar la conexión a la base de datos
         cursor.close()
         connection.close()
+
+        # Crear la sesión para el usuario después de la autenticación
         session['loggedin'] = True
-        session['username'] = user_info['email']
+        session['username'] = user_info['email']  # O puedes usar el 'username' si lo prefieres
         session['email'] = user_info['email']
-        session['name'] = user_info['name']
+        session['name'] = user_info.get('name', '')
         session['picture'] = user_info.get('picture', '')
 
         flash('Inicio de sesión con Google exitoso.')
