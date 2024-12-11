@@ -1,6 +1,6 @@
 import pytest
 from app import cipher_suite
-from app.models import Todo # type: ignore
+from app.models import Todo 
 
 def test_todo_encryption():
     todo_name = 'Test Todo'
