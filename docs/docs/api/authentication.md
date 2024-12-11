@@ -13,3 +13,13 @@ This document provides details about the authentication endpoints used in the pr
     "email": "user@example.com",
     "password": "securePassword123"
   }
+### 2. Register
+- **URL**: `/api/auth/register`
+- **Method**: POST
+- **Payload**:
+  ```json
+  {
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "securePassword123"
+  }
