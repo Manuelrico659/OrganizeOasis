@@ -28,19 +28,19 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run unit tests and save logs
+    - name: Run unit tests 
       run: |
-        pytest tests/unit/ > unit-tests.log 2>&1
+        pytest tests/unit/
       continue-on-error: true
 
-    - name: Run integration tests and save logs
+    - name: Run integration tests 
       run: |
-        pytest tests/integration/ > integration-tests.log 2>&1
+        pytest tests/integration/ 
       continue-on-error: true
 
-    - name: Run e2e tests and save logs
+    - name: Run e2e tests
       run: |
-        pytest tests/e2e/ > e2e-tests.log 2>&1
+        pytest tests/e2e/ 
       continue-on-error: true
 
     - name: Upload logs and results
