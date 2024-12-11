@@ -43,13 +43,3 @@ jobs:
         pytest tests/e2e/ 
       continue-on-error: true
 
-    - name: Upload logs and results
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: test-logs
-        path: |
-          unit-tests.log
-          integration-tests.log
-          e2e-tests.log
-        retention-days: 7
