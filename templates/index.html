@@ -14,7 +14,7 @@
             <div class="user-menu" id="userMenu">
                 <p>Hi, {{ session['username'] }}!</p>
                 <p>Email: {{ session['email'] }}</p>
-                <a href="/edit_profile.html" class="edit-profile-button">Edit Profile</a>
+                <a href="{{ url_for('edit_profile') }}" class="edit-profile-button">Edit Profile</a>
                 <a href="/logout" class="logout-button">Logout</a>
             </div>
         </nav>
