@@ -226,39 +226,35 @@ def checked_todo(todo_id):
         )
     return redirect(url_for("home"))
 
+# Página de edición de perfil
 @app.route('/edit_profile', methods=['GET', 'POST'])
 def edit_profile():
-    if 'username' not in session:
+    if 'loggedin' not in session:
         return redirect(url_for('login'))
-
-    username = session['username']
-
     if request.method == 'POST':
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
+        new_firstname = request.form['firstname']
+        new_lastname = request.form['lastname']
+        new_password = request.form['password']
 
-            # Obtener datos del formulario
-            new_email = request.form['email']
-            new_password = request.form['password']
-
-            # Actualizar perfil en la base de datos
-            cursor.execute("UPDATE users SET email = %s, password = %s WHERE username = %s",
-                           (new_email, new_password, username))
-            conn.commit()
-            cursor.close()
-            conn.close()
-
-            flash('Perfil actualizado exitosamente.', 'success')
-            return redirect(url_for('profile'))
-
-        except Exception as e:
-            app.logger.error(f"Error al actualizar el perfil: {e}")
-            flash('Ocurrió un error al actualizar tu perfil.', 'error')
-            return redirect(url_for('edit_profile'))
-
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if new_password:
+            hashed_password = bcrypt.generate_password_hash(new_password).decode('utf-8')
+            cursor.execute("""
+                UPDATE users
+                SET firstname = %s, lastname = %s, password = %s
+                WHERE username = %s
+            """, (new_firstname, new_lastname, hashed_password, session.get('username')))
+        else:
+            cursor.execute("""
+                UPDATE users
+                SET firstname = %s, lastname = %s
+                WHERE username = %s
+            """, (new_firstname, new_lastname, session.get('username')))
+        conn.commit()
+        cursor.close()
+        flash('Perfil actualizado exitosamente.')
     return render_template('edit_profile.html')
-
 
 @app.route('/login/google')
 def login_google():
