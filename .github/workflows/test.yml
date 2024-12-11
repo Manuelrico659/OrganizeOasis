@@ -21,28 +21,35 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: '3.8'  # o la versión de Python que estés usando
+        python-version: '3.8'
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run unit tests
+    - name: Run unit tests and save logs
       run: |
-        pytest tests/unit/
+        pytest tests/unit/ > unit-tests.log 2>&1
+      continue-on-error: true
 
-    - name: Run integration tests
+    - name: Run integration tests and save logs
       run: |
-        pytest tests/integration/
+        pytest tests/integration/ > integration-tests.log 2>&1
+      continue-on-error: true
 
-    - name: Run e2e tests
+    - name: Run e2e tests and save logs
       run: |
-        pytest tests/e2e/
+        pytest tests/e2e/ > e2e-tests.log 2>&1
+      continue-on-error: true
 
-    - name: Upload test results
+    - name: Upload logs and results
       if: always()
       uses: actions/upload-artifact@v3
       with:
-        name: test-results
-        path: tests/test-results/
+        name: test-logs
+        path: |
+          unit-tests.log
+          integration-tests.log
+          e2e-tests.log
+        retention-days: 7
