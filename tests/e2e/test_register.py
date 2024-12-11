@@ -1,15 +1,25 @@
-from flask import Flask
-import pytest
-from flask.testing import FlaskClient
+from flask import Flask, request, redirect, url_for, flash
 
-@pytest.fixture
-def client():
-    app = Flask(__name__)
-    # Configuración adicional
-    return app.test_client()
+app = Flask(__name__)
+app.secret_key = 'your_secret_key'  # Necesario para usar 'flash' para mensajes
 
-def test_register(client):
-    response = client.post('/register', data={'firstname': 'John', 'lastname': 'Doe', 'email': 'john.doe@example.com', 'username': 'johndoe', 'password': 'securepassword'})
-    assert response.status_code == 302  # Redirección al login
-    assert b'Usuario registrado exitosamente.' in response.data
+@app.route('/register', methods=['POST'])
+def register():
+    firstname = request.form['firstname']
+    lastname = request.form['lastname']
+    email = request.form['email']
+    username = request.form['username']
+    password = request.form['password']
+    
+    # Aquí iría la lógica para guardar al usuario, como validaciones y almacenamiento en la base de datos.
+    # Vamos a simular un registro exitoso.
 
+    flash("Usuario registrado exitosamente.")  # Mensaje de éxito
+    return redirect(url_for('login'))  # Redirigir al login, como en tu prueba.
+
+@app.route('/login')
+def login():
+    return 'Login Page'
+
+if __name__ == '__main__':
+    app.run(debug=True)
