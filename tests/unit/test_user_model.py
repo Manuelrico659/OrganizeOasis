@@ -1,6 +1,6 @@
 import pytest
 from app import bcrypt
-from app.models import User # type: ignore
+from app import User
 
 def test_password_hashing():
     password = 'password123'
