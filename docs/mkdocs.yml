@@ -1,0 +1,46 @@
+site_name: Mi Proyecto
+site_url: https://mi-proyecto.com
+site_description: Documentación para el proyecto Mi Proyecto
+
+theme:
+  name: material
+  custom_dir: theme
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Overview: getting_started/overview.md
+      - Configuration: getting_started/configuration.md
+  - API:
+      - Authentication: api/authentication.md
+      - Tasks: api/tasks.md
+  - Features:
+      - Task Management: features/task_management.md
+      - User Management: features/user_management.md
+  - Testing:
+      - End-to-End Tests: testing/e2e.md
+      - Integration Tests: testing/integration.md
+      - Unit Tests: testing/unit.md
+  - FAQ: faq.md
+  - Installation: installation.md
+  - Troubleshooting: troubleshooting.md
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/usuario/mi-proyecto
+
+plugins:
+  - search
+  - mkdocs-git-revision-date-localized-plugin
+
+extra_css:
+  - css/custom.css
+
+extra_javascript:
+  - js/custom.js
